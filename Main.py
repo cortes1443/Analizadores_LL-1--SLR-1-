@@ -22,7 +22,7 @@ class Grammar:
             for symbol in alt.split():
                 if symbol == self.epsilon:
                     continue
-                if symbol.isupper():
+                if symbol[0].isupper():
                     self.non_terminals.add(symbol)
                 else:
                     self.terminals.add(symbol)
@@ -246,4 +246,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
