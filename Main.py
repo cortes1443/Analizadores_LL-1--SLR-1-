@@ -1,250 +1,143 @@
 # main.py
-class Grammar:
-    def __init__(self):
-        self.productions = {}  # {nonterminal: [list of productions]}
-        self.non_terminals = set()
-        self.terminals = set()
-        self.start_symbol = 'S'  # Símbolo inicial
-        self.epsilon = 'e'
-
-    def add_production(self, nonterminal, alternatives):
-        """Add productions for a nonterminal"""
-        if nonterminal not in self.productions:
-            self.productions[nonterminal] = []
-
-        for alt in alternatives:
-            # Reemplazar 'e' por epsilon si es necesario
-            if alt.strip() == 'e':
-                alt = self.epsilon
-            self.productions[nonterminal].append(alt)
-
-            # Extract terminals and non-terminals
-            for symbol in alt.split():
-                if symbol == self.epsilon:
-                    continue
-                if symbol[0].isupper():
-                    self.non_terminals.add(symbol)
-                else:
-                    self.terminals.add(symbol)
-
-        self.non_terminals.add(nonterminal)
-
-    def get_all_symbols(self):
-        """Get all grammar symbols (terminals and non-terminals)"""
-        return self.terminals.union(self.non_terminals)
-
-
-def compute_first(grammar):
-    """
-    Compute FIRST sets for all grammar symbols
-    Returns: dict {symbol: set of terminals}
-    """
-    first = {}
-    changed = True
-
-    # Initialize FIRST sets
-    for symbol in grammar.get_all_symbols():
-        first[symbol] = set()
-        if symbol in grammar.terminals and symbol != grammar.epsilon:
-            first[symbol].add(symbol)
-
-    # Add epsilon to FIRST of non-terminals that can derive epsilon
-    for nt in grammar.non_terminals:
-        first[nt] = set()
-        if grammar.epsilon in grammar.productions.get(nt, []):
-            first[nt].add(grammar.epsilon)
-
-    # Iterate until no changes
-    while changed:
-        changed = False
-
-        for nt in grammar.non_terminals:
-            for production in grammar.productions.get(nt, []):
-                symbols = production.split()
-
-                # For each symbol in the production
-                all_epsilon = True
-                for symbol in symbols:
-                    if symbol == grammar.epsilon:
-                        continue
-
-                    # Add FIRST(symbol) - {epsilon} to FIRST(nt)
-                    for terminal in first.get(symbol, set()):
-                        if terminal != grammar.epsilon and terminal not in first[nt]:
-                            first[nt].add(terminal)
-                            changed = True
-
-                    # If epsilon not in FIRST(symbol), stop
-                    if grammar.epsilon not in first.get(symbol, set()):
-                        all_epsilon = False
-                        break
-
-                # If all symbols can derive epsilon, add epsilon to FIRST(nt)
-                if all_epsilon and grammar.epsilon not in first[nt]:
-                    first[nt].add(grammar.epsilon)
-                    changed = True
-
-    return first
-
-
-def compute_first_for_sequence(sequence, first_sets, grammar):
-    """
-    Compute FIRST set for a sequence of symbols
-    """
-    result = set()
-    symbols = sequence.split() if isinstance(sequence, str) else sequence
-
-    # Si la secuencia está vacía o es epsilon
-    if not symbols or symbols == [grammar.epsilon]:
-        return {grammar.epsilon}
-
-    all_epsilon = True
-    for symbol in symbols:
-        if symbol == grammar.epsilon:
-            continue
-
-        # Add FIRST(symbol) - {epsilon} to result
-        for terminal in first_sets.get(symbol, set()):
-            if terminal != grammar.epsilon:
-                result.add(terminal)
-
-        # If epsilon not in FIRST(symbol), stop
-        if grammar.epsilon not in first_sets.get(symbol, set()):
-            all_epsilon = False
-            break
-
-    # If all symbols can derive epsilon, add epsilon
-    if all_epsilon:
-        result.add(grammar.epsilon)
-
-    return result
-
-
-def compute_follow(grammar, first_sets):
-    """
-    Compute FOLLOW sets for non-terminals
-    Returns: dict {nonterminal: set of terminals}
-    """
-    follow = {nt: set() for nt in grammar.non_terminals}
-
-    # El símbolo inicial debe tener $ en FOLLOW
-    follow[grammar.start_symbol].add('$')
-
-    changed = True
-
-    while changed:
-        changed = False
-
-        for nt in grammar.non_terminals:
-            for production in grammar.productions.get(nt, []):
-                symbols = production.split()
-
-                for i, symbol in enumerate(symbols):
-                    if symbol in grammar.non_terminals:
-                        # For A -> αBβ
-                        beta = symbols[i + 1:] if i + 1 < len(symbols) else []
-
-                        if beta:
-                            # Add FIRST(β) - {epsilon} to FOLLOW(B)
-                            first_beta = compute_first_for_sequence(beta, first_sets, grammar)
-                            for terminal in first_beta:
-                                if terminal != grammar.epsilon and terminal not in follow[symbol]:
-                                    follow[symbol].add(terminal)
-                                    changed = True
-
-                            # If epsilon in FIRST(β), add FOLLOW(A) to FOLLOW(B)
-                            if grammar.epsilon in first_beta:
-                                for terminal in follow[nt]:
-                                    if terminal not in follow[symbol]:
-                                        follow[symbol].add(terminal)
-                                        changed = True
-                        else:
-                            # For A -> αB, add FOLLOW(A) to FOLLOW(B)
-                            for terminal in follow[nt]:
-                                if terminal not in follow[symbol]:
-                                    follow[symbol].add(terminal)
-                                    changed = True
-
-    return follow
-
-
-def read_grammar_from_input():
-    """
-    Read grammar from standard input
-    """
-    grammar = Grammar()
-
-    print("Enter the number of nonterminals:")
-    n = int(input().strip())
-
-    print("Enter productions in format: A -> a B c | e")
-    for i in range(n):
-        line = input().strip()
-        if '->' in line:
-            lhs, rhs = line.split('->', 1)
-            lhs = lhs.strip()
-            alternatives = [alt.strip() for alt in rhs.split('|')]
-            grammar.add_production(lhs, alternatives)
-
-    return grammar
-
+from grammar import Grammar
+from first_follow import compute_first, compute_follow
+from ll1_parser import build_ll1_table, parse_ll1
+from slr_parser import build_slr_table, parse_slr
 
 def print_sets(grammar, first_sets, follow_sets):
-    """
-    Print FIRST and FOLLOW sets in a readable format
-    """
-    print("\n" + "=" * 50)
-    print("FIRST SETS:")
-    print("=" * 50)
-    for symbol in sorted(grammar.get_all_symbols()):
-        if symbol in grammar.non_terminals:
-            print(f"FIRST({symbol}) = {{{', '.join(sorted(first_sets[symbol]))}}}")
-
-    print("\n" + "=" * 50)
-    print("FOLLOW SETS:")
-    print("=" * 50)
+    print("\n" + "="*40)
+    print("FIRST sets")
+    print("="*40)
+    for nt in sorted(grammar.non_terminals):
+        print(f"FIRST({nt}) = {{{', '.join(sorted(first_sets[nt]))}}}")
+    
+    print("\n" + "="*40)
+    print("FOLLOW sets")
+    print("="*40)
     for nt in sorted(grammar.non_terminals):
         print(f"FOLLOW({nt}) = {{{', '.join(sorted(follow_sets[nt]))}}}")
 
+def tokenize_input(line):
+    """Simple tokenizer - split by spaces"""
+    return line.strip().split()
+
+def run_parser_interface(grammar):
+    # Compute FIRST and FOLLOW
+    first_sets = compute_first(grammar)
+    follow_sets = compute_follow(grammar, first_sets)
+    
+    print_sets(grammar, first_sets, follow_sets)
+    
+    # Check LL(1) and SLR(1)
+    ll1_table, is_ll1 = build_ll1_table(grammar, first_sets, follow_sets)
+    slr_action, slr_goto, is_slr = build_slr_table(grammar, first_sets, follow_sets)
+    
+    print(f"\nLL(1) check: {'YES' if is_ll1 else 'NO'}")
+    print(f"SLR(1) check: {'YES' if is_slr else 'NO'}")
+    
+    # Determine case according to specification
+    if is_ll1 and is_slr:
+        # Case 1: Both LL(1) and SLR(1)
+        print("\nGrammar is both SLR(1) and LL(1).")
+        while True:
+            choice = input("Select a parser (T: for LL(1), B: for SLR(1), Q: quit): ").strip().upper()
+            if choice == 'Q':
+                return
+            elif choice in ('T', 'B'):
+                break
+            else:
+                print("Invalid choice. Please enter T, B, or Q.")
+        
+        parser_type = 'LL' if choice == 'T' else 'SLR'
+        print(f"Using {parser_type} parser. Enter strings to parse (empty line to stop):")
+        
+        while True:
+            line = input().strip()
+            if not line:
+                break
+            
+            tokens = tokenize_input(line)
+            if parser_type == 'LL':
+                result = parse_ll1(grammar, ll1_table, tokens)
+            else:
+                result = parse_slr(grammar, slr_action, slr_goto, tokens)
+            
+            print("yes" if result else "no")
+    
+    elif is_ll1 and not is_slr:
+        # Case 2: Only LL(1)
+        print("\nGrammar is LL(1).")
+        print("Enter strings to parse (empty line to stop):")
+        
+        while True:
+            line = input().strip()
+            if not line:
+                break
+            
+            tokens = tokenize_input(line)
+            result = parse_ll1(grammar, ll1_table, tokens)
+            print("yes" if result else "no")
+    
+    elif is_slr and not is_ll1:
+        # Case 3: Only SLR(1)
+        print("\nGrammar is SLR(1).")
+        print("Enter strings to parse (empty line to stop):")
+        
+        while True:
+            line = input().strip()
+            if not line:
+                break
+            
+            tokens = tokenize_input(line)
+            result = parse_slr(grammar, slr_action, slr_goto, tokens)
+            print("yes" if result else "no")
+    
+    else:
+        # Case 4: Neither
+        print("\nGrammar is neither LL(1) nor SLR(1).")
 
 def main():
-    """
-    Main function to demonstrate FIRST and FOLLOW computation
-    """
-    print("FIRST AND FOLLOW SETS CALCULATOR")
-    print("=" * 40)
-
-    # Example grammar or read from input
-    use_example = input("Use example grammar? (y/n): ").strip().lower()
-
-    if use_example == 'y':
-        # Example grammar con 6 no terminales
-        grammar = Grammar()
-
-        grammar.add_production('S', ["E"])
-        grammar.add_production('E', ["T E'"])
-        grammar.add_production("E'", ["+ T E'", "e"])
-        grammar.add_production('T', ["F T'"])
-        grammar.add_production("T'", ["* F T'", "e"])
-        grammar.add_production('F', ["( E )", "id"])
-
-        print("Using example grammar with 6 nonterminals: S, E, E', T, T', F")
-
-    else:
-        grammar = read_grammar_from_input()
-
-    # Compute FIRST sets
-    print("\nComputing FIRST sets...")
-    first_sets = compute_first(grammar)
-
-    # Compute FOLLOW sets
-    print("Computing FOLLOW sets...")
-    follow_sets = compute_follow(grammar, first_sets)
-
-    # Print results
-    print_sets(grammar, first_sets, follow_sets)
-
+    grammar = Grammar()
+    
+    print("Context-Free Grammar Parser")
+    print("=" * 50)
+    
+    # Read number of non-terminals
+    try:
+        n = int(input("Enter number of nonterminals: ").strip())
+        if n <= 0:
+            print("Number of nonterminals must be positive.")
+            return
+    except ValueError:
+        print("Invalid input. Please enter a number.")
+        return
+    
+    # Read productions
+    print("Enter productions in format: A -> alpha | beta")
+    print("Use 'e' for epsilon, spaces between symbols")
+    
+    for i in range(n):
+        while True:
+            line = input(f"Production {i+1}: ").strip()
+            if '->' in line:
+                lhs, rhs = line.split('->', 1)
+                lhs = lhs.strip()
+                alternatives = [alt.strip() for alt in rhs.split('|')]
+                
+                grammar.add_production(lhs, alternatives)
+                break
+            else:
+                print("Invalid format. Use: A -> alpha | beta")
+    
+    print("\n" + "="*50)
+    print("Grammar loaded successfully!")
+    print(grammar)
+    
+    # Set start symbol (always S according to specification)
+    grammar.start_symbol = 'S'
+    
+    # Run parser interface
+    run_parser_interface(grammar)
 
 if __name__ == "__main__":
-
     main()
